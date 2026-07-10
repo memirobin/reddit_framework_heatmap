@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Reddit社群结构可视化</title>
+<style>
+:root {
+  --bg: #1a242d;
+  --red: #de2910;
+  --blue: #1c3d5a;
+  --line: #334155;
+  --white: #ffffff;
+  --muted: #cbd5e1;
+  --sub: #94a3b8;
+  --sub2: #7ba4c0;
+  --panel: rgba(30, 41, 59, 0.85);
+  --intro: rgba(36, 50, 63, 0.85);
+  --critical-bg: #7f1d1d;
+  --critical-text: #fca5a5;
+  --critical-border: #b91c1c;
+  --high-bg: #7c2d12;
+  --high-text: #fed7aa;
+  --high-border: #c2410c;
+  --medium-bg: #1e3a8a;
+  --medium-text: #bfdbfe;
+  --medium-border: #1d4ed8;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin:0; padding:0; background:var(--bg); color:var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
+.wrap {
+  width: 100%; max-width: 1180px; margin: 0 auto; padding: 18px 22px;
+}
+.header {
+  border: 1px solid rgba(148,163,184,.18);
+  background: linear-gradient(135deg, rgba(10, 17, 40, 0.95) 0%, rgba(28, 61, 90, 0.95) 100%);
+  border-radius: 22px;
+  padding: 24px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.header::after {
+  content:""; position:absolute; right:-80px; top:-100px; width:260px; height:260px;
+  background: radial-gradient(circle, rgba(222,41,16,.25), rgba(222,41,16,0) 65%);
+}
+.kicker {
+  color: var(--sub2); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700;
+}
+h1 { margin: 10px 0 8px; color:var(--white); font-size: clamp(22px, 3.2vw, 38px); line-height:1.18; }
+.desc { margin:0; max-width: 900px; color: var(--muted); font-size: 15px; line-height:1.75; }
+.grid { display:grid; gap:16px; }
+.metrics { grid-template-columns: repeat(4, minmax(0,1fr)); margin:18px 0; }
+.metric {
+  background: var(--intro); border:1px solid rgba(148,163,184,.16); border-radius:18px; padding:15px 16px;
+}
+.metric .label { color:var(--sub); font-size:12px; }
+.metric .value { color:var(--white); font-size:26px; font-weight:800; margin-top:6px; }
+.metric .note { color:var(--sub); font-size:12px; margin-top:6px; line-height:1.4; }
+.panel {
+  background: var(--panel); border:1px solid rgba(148,163,184,.17); border-radius:22px; padding:22px; margin-top:18px;
+}
+.panel-title { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.panel-title h2 { margin:0; color:var(--white); font-size: 20px; }
+.tag {
+  display:inline-flex; align-items:center; gap:6px; border:1px solid var(--high-border); background:var(--high-bg); color:var(--high-text);
+  border-radius: 999px; padding:6px 10px; font-size:12px; font-weight:700;
+}
+.controls { display:flex; gap:8px; flex-wrap:wrap; }
+button {
+  appearance:none; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.55); color:var(--muted);
+  border-radius:999px; padding:8px 12px; cursor:pointer; font-weight:700; font-size:12px;
+}
+button.active { background:var(--red); border-color:var(--red); color:var(--white); }
+svg { width:100%; height:auto; display:block; overflow:visible; }
+.axis, .caption { fill:var(--sub); font-size:12px; }
+.chart-label { fill:var(--white); font-size:13px; font-weight:700; }
+.value-label { fill:var(--muted); font-size:12px; }
+.tooltip {
+  position: fixed; z-index: 30; pointer-events:none; opacity:0; transform:translate(-50%, -120%);
+  background: rgba(10,17,40,.96); color:var(--white); border:1px solid rgba(148,163,184,.3);
+  border-radius: 12px; padding:10px 12px; min-width:180px; box-shadow:0 18px 50px rgba(0,0,0,.35);
+  font-size:12px; line-height:1.55;
+}
+.callout {
+  margin-top:16px; border-left:4px solid var(--red); background:rgba(222,41,16,.09);
+  border-radius:16px; padding:14px 16px; color:var(--muted); line-height:1.75; font-size:14px;
+}
+.footer { color:var(--sub); font-size:12px; margin-top:14px; border-top:1px solid rgba(148,163,184,.14); padding-top:12px; }
+@media (max-width: 760px) {
+  .wrap { padding: 16px; }
+  .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .metric .value { font-size:22px; }
+}
+
+.bar-bg { fill:rgba(148,163,184,.12); }
+.bar { fill:url(#barGrad); transition: width .45s ease, opacity .25s ease; }
+.bar-row:hover .bar { opacity:.85; }
+.small-dot { fill:var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="panel">
+    <div class="panel-title no-title"><div class="controls">
+        <button class="active" data-metric="comments">评论量</button>
+        <button data-metric="posts">帖子量</button>
+        <button data-metric="density">评论/帖</button>
+      </div>
+    </div>
+    <svg id="chart" viewBox="0 0 1080 460" role="img" aria-label="Reddit四类社群样本规模柱状图">
+      <defs>
+        <linearGradient id="barGrad" x1="0%" x2="100%">
+          <stop offset="0%" stop-color="#1c3d5a" />
+          <stop offset="70%" stop-color="#7ba4c0" />
+          <stop offset="100%" stop-color="#de2910" />
+        </linearGradient>
+      </defs>
+    </svg>
+</section>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<script>
+const data = [{"group": "aviation", "label": "r/aviation相关样本", "posts": 891, "comments": 44970, "total_docs": 45861, "share": 55.89668373688659, "density": 50.47138047138047}, {"group": "aviationaccidents", "label": "r/aviationaccidents相关样本", "posts": 434, "comments": 6151, "total_docs": 6585, "share": 7.645552627653757, "density": 14.172811059907835}, {"group": "worldnews", "label": "r/worldnews相关样本", "posts": 546, "comments": 10422, "total_docs": 10968, "share": 12.954308158902203, "density": 19.087912087912088}, {"group": "conspiracy", "label": "r/conspiracy相关样本", "posts": 692, "comments": 18909, "total_docs": 19601, "share": 23.50345547655745, "density": 27.32514450867052}];
+const svg = document.getElementById('chart');
+const tooltip = document.getElementById('tooltip');
+let metric = 'comments';
+const fmt = new Intl.NumberFormat('zh-CN');
+function render() {
+  svg.querySelectorAll('.dynamic').forEach(e => e.remove());
+  const W=1080, H=460, left=300, right=90, top=40, rowH=86, barH=30;
+  const vals = data.map(d => metric==='density' ? d.density : d[metric]);
+  const max = Math.max(...vals) * 1.08;
+  data.forEach((d,i) => {
+    const y=top+i*rowH;
+    const v=metric==='density' ? d.density : d[metric];
+    const w=(W-left-right)*v/max;
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','dynamic bar-row');
+    g.innerHTML = `
+      <text x="0" y="${y+22}" class="chart-label">${d.label}</text>
+      <rect x="${left}" y="${y}" width="${W-left-right}" height="${barH}" rx="15" class="bar-bg"></rect>
+      <rect x="${left}" y="${y}" width="${w}" height="${barH}" rx="15" class="bar"></rect>
+      <circle cx="${left+w}" cy="${y+barH/2}" r="5" class="small-dot"></circle>
+      <text x="${left+w+14}" y="${y+20}" class="value-label">${metric==='density' ? v.toFixed(1) : fmt.format(v)}${metric==='density' ? '' : '条'}</text>
+      <text x="${left}" y="${y+58}" class="caption">帖子 ${fmt.format(d.posts)}｜评论 ${fmt.format(d.comments)}｜评论占比 ${d.share.toFixed(1)}%</text>
+    `;
+    g.addEventListener('mousemove', (ev) => {
+      tooltip.style.opacity=1;
+      tooltip.style.left=ev.clientX+'px';
+      tooltip.style.top=ev.clientY+'px';
+      tooltip.innerHTML = `<strong>${d.label}</strong><br>帖子：${fmt.format(d.posts)}条<br>评论：${fmt.format(d.comments)}条<br>评论/帖：${d.density.toFixed(1)}<br>评论占比：${d.share.toFixed(1)}%`;
+    });
+    g.addEventListener('mouseleave', () => tooltip.style.opacity=0);
+    svg.appendChild(g);
+  });
+}
+document.querySelectorAll('button[data-metric]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('button[data-metric]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    metric = btn.dataset.metric;
+    render();
+  });
+});
+render();
+</script>
+</body>
+</html>
