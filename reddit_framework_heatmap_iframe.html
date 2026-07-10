@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Reddit解释框架矩阵</title>
+<style>
+:root {
+  --bg: #1a242d;
+  --red: #de2910;
+  --blue: #1c3d5a;
+  --line: #334155;
+  --white: #ffffff;
+  --muted: #cbd5e1;
+  --sub: #94a3b8;
+  --sub2: #7ba4c0;
+  --panel: rgba(30, 41, 59, 0.85);
+  --intro: rgba(36, 50, 63, 0.85);
+  --critical-bg: #7f1d1d;
+  --critical-text: #fca5a5;
+  --critical-border: #b91c1c;
+  --high-bg: #7c2d12;
+  --high-text: #fed7aa;
+  --high-border: #c2410c;
+  --medium-bg: #1e3a8a;
+  --medium-text: #bfdbfe;
+  --medium-border: #1d4ed8;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin:0; padding:0; background:var(--bg); color:var(--muted);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
+.wrap {
+  width: 100%; max-width: 1180px; margin: 0 auto; padding: 18px 22px;
+}
+.header {
+  border: 1px solid rgba(148,163,184,.18);
+  background: linear-gradient(135deg, rgba(10, 17, 40, 0.95) 0%, rgba(28, 61, 90, 0.95) 100%);
+  border-radius: 22px;
+  padding: 24px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.header::after {
+  content:""; position:absolute; right:-80px; top:-100px; width:260px; height:260px;
+  background: radial-gradient(circle, rgba(222,41,16,.25), rgba(222,41,16,0) 65%);
+}
+.kicker {
+  color: var(--sub2); font-size: 13px; letter-spacing: .16em; text-transform: uppercase; font-weight: 700;
+}
+h1 { margin: 10px 0 8px; color:var(--white); font-size: clamp(22px, 3.2vw, 38px); line-height:1.18; }
+.desc { margin:0; max-width: 900px; color: var(--muted); font-size: 15px; line-height:1.75; }
+.grid { display:grid; gap:16px; }
+.metrics { grid-template-columns: repeat(4, minmax(0,1fr)); margin:18px 0; }
+.metric {
+  background: var(--intro); border:1px solid rgba(148,163,184,.16); border-radius:18px; padding:15px 16px;
+}
+.metric .label { color:var(--sub); font-size:12px; }
+.metric .value { color:var(--white); font-size:26px; font-weight:800; margin-top:6px; }
+.metric .note { color:var(--sub); font-size:12px; margin-top:6px; line-height:1.4; }
+.panel {
+  background: var(--panel); border:1px solid rgba(148,163,184,.17); border-radius:22px; padding:22px; margin-top:18px;
+}
+.panel-title { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+.panel-title h2 { margin:0; color:var(--white); font-size: 20px; }
+.tag {
+  display:inline-flex; align-items:center; gap:6px; border:1px solid var(--high-border); background:var(--high-bg); color:var(--high-text);
+  border-radius: 999px; padding:6px 10px; font-size:12px; font-weight:700;
+}
+.controls { display:flex; gap:8px; flex-wrap:wrap; }
+button {
+  appearance:none; border:1px solid rgba(148,163,184,.22); background:rgba(15,23,42,.55); color:var(--muted);
+  border-radius:999px; padding:8px 12px; cursor:pointer; font-weight:700; font-size:12px;
+}
+button.active { background:var(--red); border-color:var(--red); color:var(--white); }
+svg { width:100%; height:auto; display:block; overflow:visible; }
+.axis, .caption { fill:var(--sub); font-size:12px; }
+.chart-label { fill:var(--white); font-size:13px; font-weight:700; }
+.value-label { fill:var(--muted); font-size:12px; }
+.tooltip {
+  position: fixed; z-index: 30; pointer-events:none; opacity:0; transform:translate(-50%, -120%);
+  background: rgba(10,17,40,.96); color:var(--white); border:1px solid rgba(148,163,184,.3);
+  border-radius: 12px; padding:10px 12px; min-width:180px; box-shadow:0 18px 50px rgba(0,0,0,.35);
+  font-size:12px; line-height:1.55;
+}
+.callout {
+  margin-top:16px; border-left:4px solid var(--red); background:rgba(222,41,16,.09);
+  border-radius:16px; padding:14px 16px; color:var(--muted); line-height:1.75; font-size:14px;
+}
+.footer { color:var(--sub); font-size:12px; margin-top:14px; border-top:1px solid rgba(148,163,184,.14); padding-top:12px; }
+@media (max-width: 760px) {
+  .wrap { padding: 16px; }
+  .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .metric .value { font-size:22px; }
+}
+
+.heat-cell { stroke:rgba(148,163,184,.22); stroke-width:1; transition:opacity .25s ease, transform .25s ease; }
+.heat-cell:hover { opacity:.85; }
+.legend-stop { rx:6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<section class="panel">
+    <div class="panel-title no-title"><div class="controls">
+        <button class="active" data-mode="per1000">每千条命中</button>
+        <button data-mode="docs">文档命中数</button>
+        <button data-mode="raw">词频</button>
+      </div>
+    </div>
+    <svg id="heatmap" viewBox="0 0 1080 560" role="img" aria-label="Reddit解释框架热力图"></svg>
+</section>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<script>
+const data = [{"group": "r/aviation", "groupKey": "aviation", "frame": "技术解释", "docs": 3033, "per1000": 66.13, "raw": 4371, "totalDocs": 45861}, {"group": "r/aviationaccidents", "groupKey": "aviationaccidents", "frame": "技术解释", "docs": 829, "per1000": 125.89, "raw": 1439, "totalDocs": 6585}, {"group": "r/worldnews", "groupKey": "worldnews", "frame": "技术解释", "docs": 40, "per1000": 3.65, "raw": 49, "totalDocs": 10968}, {"group": "r/conspiracy", "groupKey": "conspiracy", "frame": "技术解释", "docs": 103, "per1000": 5.25, "raw": 141, "totalDocs": 19601}, {"group": "r/aviation", "groupKey": "aviation", "frame": "历史比较", "docs": 471, "per1000": 10.27, "raw": 592, "totalDocs": 45861}, {"group": "r/aviationaccidents", "groupKey": "aviationaccidents", "frame": "历史比较", "docs": 152, "per1000": 23.08, "raw": 203, "totalDocs": 6585}, {"group": "r/worldnews", "groupKey": "worldnews", "frame": "历史比较", "docs": 57, "per1000": 5.2, "raw": 61, "totalDocs": 10968}, {"group": "r/conspiracy", "groupKey": "conspiracy", "frame": "历史比较", "docs": 105, "per1000": 5.36, "raw": 116, "totalDocs": 19601}, {"group": "r/aviation", "groupKey": "aviation", "frame": "治理透明", "docs": 917, "per1000": 20.0, "raw": 1388, "totalDocs": 45861}, {"group": "r/aviationaccidents", "groupKey": "aviationaccidents", "frame": "治理透明", "docs": 337, "per1000": 51.18, "raw": 550, "totalDocs": 6585}, {"group": "r/worldnews", "groupKey": "worldnews", "frame": "治理透明", "docs": 536, "per1000": 48.87, "raw": 707, "totalDocs": 10968}, {"group": "r/conspiracy", "groupKey": "conspiracy", "frame": "治理透明", "docs": 976, "per1000": 49.79, "raw": 1456, "totalDocs": 19601}, {"group": "r/aviation", "groupKey": "aviation", "frame": "阴谋不信任", "docs": 466, "per1000": 10.16, "raw": 558, "totalDocs": 45861}, {"group": "r/aviationaccidents", "groupKey": "aviationaccidents", "frame": "阴谋不信任", "docs": 168, "per1000": 25.51, "raw": 223, "totalDocs": 6585}, {"group": "r/worldnews", "groupKey": "worldnews", "frame": "阴谋不信任", "docs": 337, "per1000": 30.73, "raw": 411, "totalDocs": 10968}, {"group": "r/conspiracy", "groupKey": "conspiracy", "frame": "阴谋不信任", "docs": 2637, "per1000": 134.53, "raw": 3956, "totalDocs": 19601}, {"group": "r/aviation", "groupKey": "aviation", "frame": "MU5735直接提及", "docs": 3, "per1000": 0.07, "raw": 3, "totalDocs": 45861}, {"group": "r/aviationaccidents", "groupKey": "aviationaccidents", "frame": "MU5735直接提及", "docs": 8, "per1000": 1.21, "raw": 13, "totalDocs": 6585}, {"group": "r/worldnews", "groupKey": "worldnews", "frame": "MU5735直接提及", "docs": 0, "per1000": 0.0, "raw": 0, "totalDocs": 10968}, {"group": "r/conspiracy", "groupKey": "conspiracy", "frame": "MU5735直接提及", "docs": 0, "per1000": 0.0, "raw": 0, "totalDocs": 19601}];
+const groups = ['r/aviation','r/aviationaccidents','r/worldnews','r/conspiracy'];
+const frames = ['技术解释','历史比较','治理透明','阴谋不信任','MU5735直接提及'];
+const svg = document.getElementById('heatmap');
+const tooltip = document.getElementById('tooltip');
+let mode='per1000';
+const fmt = new Intl.NumberFormat('zh-CN');
+function colorFor(v, max) {
+  const t = max ? Math.sqrt(v/max) : 0;
+  const r = Math.round(28 + (222-28)*t);
+  const g = Math.round(61 + (41-61)*t);
+  const b = Math.round(90 + (16-90)*t);
+  return `rgb(${r},${g},${b})`;
+}
+function labelFor(mode, v) {
+  if (mode==='per1000') return v.toFixed(2) + ' /千条';
+  return fmt.format(v);
+}
+function render() {
+  svg.querySelectorAll('.dynamic').forEach(e => e.remove());
+  const W=1080,H=560,left=165,top=85,cellW=215,cellH=74;
+  const vals=data.map(d=>d[mode]);
+  const max=Math.max(...vals);
+  frames.forEach((f,ri)=> {
+    const y=top+ri*cellH+cellH/2+5;
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('class','dynamic chart-label');
+    t.setAttribute('x','0'); t.setAttribute('y',y); t.textContent=f;
+    svg.appendChild(t);
+  });
+  groups.forEach((g,ci)=> {
+    const x=left+ci*cellW+cellW/2;
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('class','dynamic chart-label');
+    t.setAttribute('x',x); t.setAttribute('y','42'); t.setAttribute('text-anchor','middle'); t.textContent=g;
+    svg.appendChild(t);
+  });
+  data.forEach(d=> {
+    const ci=groups.indexOf(d.group), ri=frames.indexOf(d.frame);
+    if (ci<0 || ri<0) return;
+    const x=left+ci*cellW, y=top+ri*cellH;
+    const v=d[mode];
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('class','dynamic heat-cell');
+    rect.setAttribute('x',x); rect.setAttribute('y',y); rect.setAttribute('width',cellW-10); rect.setAttribute('height',cellH-10);
+    rect.setAttribute('rx','14'); rect.setAttribute('fill', colorFor(v, max));
+    rect.addEventListener('mousemove', ev=> {
+      tooltip.style.opacity=1; tooltip.style.left=ev.clientX+'px'; tooltip.style.top=ev.clientY+'px';
+      tooltip.innerHTML=`<strong>${d.group}｜${d.frame}</strong><br>每千条命中：${d.per1000.toFixed(2)}<br>文档命中数：${fmt.format(d.docs)}<br>词频：${fmt.format(d.raw)}<br>样本文档：${fmt.format(d.totalDocs)}`;
+    });
+    rect.addEventListener('mouseleave', ()=>tooltip.style.opacity=0);
+    svg.appendChild(rect);
+    const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('class','dynamic value-label');
+    txt.setAttribute('x',x+(cellW-10)/2); txt.setAttribute('y',y+cellH/2);
+    txt.setAttribute('text-anchor','middle');
+    txt.setAttribute('fill', '#ffffff');
+    txt.setAttribute('font-weight','800');
+    txt.textContent=labelFor(mode, v);
+    svg.appendChild(txt);
+  });
+  const lx=left, ly=H-54;
+  const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+  label.setAttribute('class','dynamic caption'); label.setAttribute('x',lx); label.setAttribute('y',ly-12);
+  label.textContent='颜色越红，说明该框架在对应社群中的出现强度越高';
+  svg.appendChild(label);
+  for(let i=0;i<7;i++) {
+    const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    rect.setAttribute('class','dynamic legend-stop');
+    rect.setAttribute('x',lx+i*42); rect.setAttribute('y',ly); rect.setAttribute('width','36'); rect.setAttribute('height','12');
+    rect.setAttribute('fill', colorFor(max*i/6, max));
+    svg.appendChild(rect);
+  }
+}
+document.querySelectorAll('button[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('button[data-mode]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+    render();
+  });
+});
+render();
+</script>
+</body>
+</html>
